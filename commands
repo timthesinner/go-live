@@ -1,4 +1,4 @@
-//Decent Quality 4.1
+ //Decent Quality 4.1
 piper.exe | C:\ffmpeg\bin\ffmpeg.exe -re -i pipe: -c:v libvpx -c:a libvorbis -f webm -b:v 1250k -speed 10 -threads 10 -vf scale=-1:576 output.webm
 
 //Less pixilation in action scenes than the first command, right at the edge of the server's capabilities

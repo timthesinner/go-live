@@ -1,1 +1,5 @@
 *.exe
+.DS_Store
+go-live
+*.ts
+*.webm

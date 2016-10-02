@@ -20,13 +20,11 @@ package main
 import (
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"html/template"
 	"io"
 	"net/http"
 	"os"
-	"path"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -274,20 +272,25 @@ func monitor(stream string) {
 	}
 }
 
-func main() {
-	flag.Parse()
-
-	streamFile := path.Join(".", "stream.webm")
-	if flag.NArg() > 0 {
-		streamFile = flag.Arg(0)
+func waitForOutputStream(output string) {
+	for {
+		if _, err := os.Stat(output); err == nil {
+			break
+		}
+		time.Sleep(time.Millisecond * 10)
 	}
+	fmt.Println("Found output stream", output)
+}
 
-	go monitor(streamFile)
+func serve(output string) {
+	waitForOutputStream(output)
+
+	go monitor(output)
 
 	http.Handle("/", http.RedirectHandler("/ui/", 302))
-	http.Handle("/webm/", http.StripPrefix("/webm/", newWebmStream(streamFile)))
+	http.Handle("/webm/", http.StripPrefix("/webm/", newWebmStream(output)))
 	http.Handle("/ui/", http.StripPrefix("/ui/", newTemplateServer()))
-	http.Handle("/rest/stream-head", http.StripPrefix("/rest/stream-head", newStreamHead(streamFile)))
+	http.Handle("/rest/stream-head", http.StripPrefix("/rest/stream-head", newStreamHead(output)))
 	http.ListenAndServe(":8080", nil)
 }
 
