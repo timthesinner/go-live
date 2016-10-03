@@ -48,44 +48,49 @@ WAIT:
 }
 
 const (
-	videoBitrate = "2200k"
-	videoScale   = "-1:625"
-	audioBitrate = "96k"
+	videoBitrate = "2250k"
+	videoScale   = "-1:680"
+	audioBitrate = "128k"
 	audioDevice  = "Microphone (Realtek High Defini"
+	//audioDevice = "Line-In (Sound Blaster Audigy 5"
 )
 
 func encoder(dir, output string, stream os.FileInfo) {
-	cmd := exec.Command("C:\\ffmpeg\\bin\\ffmpeg.exe", "-i", "pipe:",
+	cmd := exec.Command("C:\\ffmpeg\\bin\\ffmpeg.exe", "-itsoffset", "30", "-i", "pipe:",
 		"-f", "dshow", "-i", "audio="+audioDevice,
-		"-c:v", "libvpx", "-speed", "10", "-threads", "4",
+		"-c:v", "libvpx", "-speed", "4", "-threads", "4",
 		"-c:a", "libopus", "-b:v", videoBitrate, "-b:a", audioBitrate, "-vf", "scale="+videoScale,
-		"-map", "0:v:0", "-map", "1:a:0", "-r", "30", "-f", "webm", output)
-	cmd.Stderr = os.Stderr //FFMPEG Output is on the error buffer so stdout can be piped
+		"-map", "0:v:0", "-map", "1:a:0" /*, "-r", "30"*/, "-f", "webm", output)
+	cmd.Stderr = os.Stderr
+	cmd.Stdout = os.Stdout
 
 	if in, err := cmd.StdinPipe(); err != nil {
 		log.Fatal(err)
 	} else {
-		file, err := os.Open(filepath.Join(dir, stream.Name()))
-		if err != nil {
-			fmt.Println("Could not open", filepath.Join(dir, stream.Name()))
-			log.Fatal(err)
-		}
-		defer file.Close()
-
-		bufferSize := 1024 * 10
-		block := make([]byte, bufferSize)
-		for {
-			read, _ := file.Read(block)
-			if read == 0 {
-				time.Sleep(time.Millisecond * 10)
-			} else if read == bufferSize {
-				in.Write(block)
-			} else {
-				in.Write(block[0:read])
+		go func() {
+			file, err := os.Open(filepath.Join(dir, stream.Name()))
+			if err != nil {
+				fmt.Println("Could not open", filepath.Join(dir, stream.Name()))
+				log.Fatal(err)
 			}
-		}
+			defer file.Close()
+
+			bufferSize := 1024 * 10
+			block := make([]byte, bufferSize)
+			for {
+				read, _ := file.Read(block)
+				if read == 0 {
+					time.Sleep(time.Millisecond * 10)
+				} else if read == bufferSize {
+					in.Write(block)
+				} else {
+					in.Write(block[0:read])
+				}
+			}
+		}()
 	}
 
+	fmt.Println("Running FFMPEG with:", cmd.Args)
 	err := cmd.Run()
 	if err != nil {
 		fmt.Println("Error executing ffmpeg", err)
