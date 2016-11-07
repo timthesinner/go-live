@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"html/template"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -36,18 +37,19 @@ const maxBlockSize = 1024 * 1024       //Max block size set to 1MB
 const startBlockSize = 1024 * 1024 * 2 //Starting block size set to 2MB
 const chunkRequest = 1024 * 1024 * 3   //Offset from "now" for folks that join late 3MB
 
-const flushSize = 1024 * 45                            // Flush 40KB at a time
+const defaultFlushSize = 1024 * 45                     // Flush 40KB at a time
 const flushTime time.Duration = 100 * time.Millisecond //Tick every 100ms
 
 var _range = regexp.MustCompile(`bytes=(\d+)-(\d*)`)
 var _head = regexp.MustCompile(`^.*?-(\d+)$`)
 
 type webmStream struct {
-	stream string
+	stream    string
+	flushSize int
 }
 
-func newWebmStream(stream string) *webmStream {
-	return &webmStream{stream}
+func newWebmStream(stream string, flushSize int) *webmStream {
+	return &webmStream{stream, flushSize}
 }
 
 func min(a, b int64) int64 {
@@ -84,14 +86,15 @@ func rangeRequest(fileSize int64, req *http.Request) (int64, int64) {
 }
 
 type flusher struct {
-	f     http.Flusher
-	w     http.ResponseWriter
-	start bool
+	f         http.Flusher
+	w         http.ResponseWriter
+	start     bool
+	flushSize int
 }
 
-func newFlusher(w http.ResponseWriter, blockSize int64) (flusher, error) {
+func newFlusher(w http.ResponseWriter, blockSize int64, flushSize int) (flusher, error) {
 	if f, ok := w.(http.Flusher); ok {
-		return flusher{w: w, f: f, start: blockSize == startBlockSize}, nil
+		return flusher{w: w, f: f, start: blockSize == startBlockSize, flushSize: flushSize}, nil
 	}
 
 	return flusher{}, errors.New("Response Writer was not a flusher")
@@ -99,6 +102,7 @@ func newFlusher(w http.ResponseWriter, blockSize int64) (flusher, error) {
 
 func (f flusher) Write(b []byte) (n int, err error) {
 	length := len(b)
+	flushSize := f.flushSize
 	blocks := length / flushSize
 	var _n int
 
@@ -141,6 +145,8 @@ func (f flusher) Write(b []byte) (n int, err error) {
 }
 
 func (s *webmStream) ServeHTTP(res http.ResponseWriter, req *http.Request) {
+	res.Header().Add("Strict-Transport-Security", "max-age=63072000; includeSubDomains")
+
 	file, err := os.Open(filepath.Clean(s.stream))
 	if err != nil {
 		fmt.Println("Could not open file", err)
@@ -190,7 +196,7 @@ func (s *webmStream) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 	res.WriteHeader(http.StatusPartialContent)
 
 	var writer io.Writer
-	if writer, err = newFlusher(res, blockSize); err != nil {
+	if writer, err = newFlusher(res, blockSize, s.flushSize); err != nil {
 		writer = res
 	}
 
@@ -221,6 +227,7 @@ type videoDatum struct {
 var _StreamHead = videoDatum{}
 
 func (s *streamHead) ServeHTTP(res http.ResponseWriter, req *http.Request) {
+	res.Header().Add("Strict-Transport-Security", "max-age=63072000; includeSubDomains")
 	res.Header().Add("Content-Type", "Application/json")
 	res.WriteHeader(http.StatusOK)
 	json.NewEncoder(res).Encode(_StreamHead)
@@ -282,16 +289,19 @@ func waitForOutputStream(output string) {
 	fmt.Println("Found output stream", output)
 }
 
-func serve(output string) {
+func serve(output string, conf *Config) {
 	waitForOutputStream(output)
+
+	if conf.FlushSize < defaultFlushSize {
+		conf.FlushSize = defaultFlushSize
+	}
 
 	go monitor(output)
 
-	http.Handle("/", http.RedirectHandler("/ui/", 302))
-	http.Handle("/webm/", http.StripPrefix("/webm/", newWebmStream(output)))
-	http.Handle("/ui/", http.StripPrefix("/ui/", newTemplateServer()))
+	http.Handle("/", newTemplateServer())
+	http.Handle("/webm/", http.StripPrefix("/webm/", newWebmStream(output, conf.FlushSize)))
 	http.Handle("/rest/stream-head", http.StripPrefix("/rest/stream-head", newStreamHead(output)))
-	http.ListenAndServe(":8080", nil)
+	log.Fatal(http.ListenAndServeTLS(":8080", "server.pem", "server.key", nil))
 }
 
 type templateServer struct{}
@@ -303,6 +313,8 @@ func newTemplateServer() *templateServer {
 var _ClientMap = make(map[string]string)
 
 func (s *templateServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	w.Header().Add("Strict-Transport-Security", "max-age=63072000; includeSubDomains")
+
 	const html = `<!doctype html>
 <html lang="en">
 	<head>

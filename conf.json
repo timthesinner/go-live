@@ -1,0 +1,30 @@
+{
+  "ffmpeg": "C:\\ffmpeg\\bin\\ffmpeg.exe",
+  "flushSize": 60000,
+  "args_tv": [
+    "-i", "pipe:",
+    "-c:v", "libvpx", "-speed", "4", "-threads", "4",
+    "-c:a", "libopus", "-b:v", "2250k", "-b:a", "128k",
+	"-vf", "scale=-1:680",
+	"-af", "aformat=channel_layouts='7.1|5.1|stereo'",
+    "-f", "webm"
+  ],
+  "args_self": [
+    "-itsoffset", "15",
+    "-i", "pipe:",
+    "-f", "dshow", "-i", "audio=Microphone (Realtek High Defini",
+    "-c:v", "libvpx", "-speed", "4", "-threads", "4",
+    "-c:a", "libopus", "-b:v", "3000k", "-b:a", "128k", "-vf", "scale=-1:680",
+    "-map", "0:v:0", "-map", "1:a:0",
+    "-f", "webm"
+  ],
+  "args": [
+    "-itsoffset", "10",
+    "-i", "pipe:",
+    "-f", "dshow", "-i", "audio=Microphone (Realtek High Defini",
+    "-c:v", "libvpx", "-speed", "4", "-threads", "4",
+    "-c:a", "libopus", "-b:v", "2250k", "-b:a", "128k", "-vf", "scale=-1:680",
+    "-map", "0:v:0", "-map", "1:a:0",
+    "-f", "webm"
+  ]
+}

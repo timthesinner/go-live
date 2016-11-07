@@ -15,9 +15,10 @@ package main
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- */
+ */ 
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -55,12 +56,22 @@ const (
 	//audioDevice = "Line-In (Sound Blaster Audigy 5"
 )
 
-func encoder(dir, output string, stream os.FileInfo) {
-	cmd := exec.Command("C:\\ffmpeg\\bin\\ffmpeg.exe", "-itsoffset", "30", "-i", "pipe:",
-		"-f", "dshow", "-i", "audio="+audioDevice,
-		"-c:v", "libvpx", "-speed", "4", "-threads", "4",
-		"-c:a", "libopus", "-b:v", videoBitrate, "-b:a", audioBitrate, "-vf", "scale="+videoScale,
-		"-map", "0:v:0", "-map", "1:a:0" /*, "-r", "30"*/, "-f", "webm", output)
+//Config Metadata Datum
+type Config struct {
+	Ffmpeg    string   `json:"ffmpeg"`
+	FlushSize int      `json:"flushSize"`
+	Args      []string `json:"args"`
+}
+
+func encoder(conf *Config, dir, output string, stream os.FileInfo) {
+	args := append(conf.Args, output)
+	cmd := exec.Command(conf.Ffmpeg, args...)
+
+	/*"C:\\ffmpeg\\bin\\ffmpeg.exe", "-itsoffset", "3", "-i", "pipe:",
+	"-f", "dshow", "-i", "audio="+audioDevice,
+	"-c:v", "libvpx", "-speed", "4", "-threads", "4",
+	"-c:a", "libopus", "-b:v", videoBitrate, "-b:a", audioBitrate, "-vf", "scale="+videoScale,
+	//"-map", "0:v:0", "-map", "1:a:0" /*, "-r", "30"*/ //, "-f", "webm", output)
 	cmd.Stderr = os.Stderr
 	cmd.Stdout = os.Stdout
 
@@ -106,7 +117,16 @@ func main() {
 		output = flag.Arg(0)
 	}
 
+	config, err := os.Open("conf.json")
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(-1)
+	}
+
+	var conf Config
+	json.NewDecoder(config).Decode(&conf)
+
 	stream := waitForInputStream(dir)
-	go encoder(dir, output, stream)
-	serve(output) //This call blocks by calling HTTP Listen and Serve outside of a go routine
+	go encoder(&conf, dir, output, stream)
+	serve(output, &conf) //This call blocks by calling HTTP Listen and Serve outside of a go routine
 }
